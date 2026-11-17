@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -59,6 +61,15 @@ public class BluetoothService {
 
     public boolean isConnecting() {
         return isConnecting;
+    }
+
+    /**
+     * Envia comando/texto via Bluetooth para o Arduino.
+     */
+    public void sendData(String message) {
+        if (connectedThread != null && isConnected()) {
+            connectedThread.write(message);
+        }
     }
 
     /**
@@ -251,18 +262,22 @@ public class BluetoothService {
 
         private void parseAndProcessLine(String line) {
             if (line.isEmpty()) return;
+            Log.d(TAG, "RAW RECEBIDO DO BLUETOOTH: [" + line + "]");
 
             try {
                 // Formato 1: JSON {"temp": 29.4, "hum": 60.2}
-                if (line.startsWith("{") && line.endsWith("}")) {
-                    JSONObject json = new JSONObject(line);
+                if (line.contains("temp") && line.contains("{") && line.contains("}")) {
+                    int start = line.indexOf("{");
+                    int end = line.lastIndexOf("}") + 1;
+                    String jsonSub = line.substring(start, end);
+                    JSONObject json = new JSONObject(jsonSub);
                     float temp = (float) json.getDouble("temp");
                     float hum = (float) json.optDouble("hum", 0.0);
                     notifyData(temp, hum);
                     return;
                 }
 
-                // Formato 2: Protocolo textual TEMP:29.4;HUM:60.2 ou Umidade: 60 % Temperatura: 25.3 *C
+                // Formato 2: Protocolo textual TEMP:29.4;HUM:60.2
                 if (line.contains("TEMP:") || line.contains("temp:")) {
                     String clean = line.toUpperCase();
                     float temp = 0;
@@ -282,34 +297,48 @@ public class BluetoothService {
                 }
 
                 // Formato 2B: Saída do Monitor Serial "Umidade: 60 %\tTemperatura: 25.3 *C"
-                if (line.contains("Umidade:") && line.contains("Temperatura:")) {
+                if (line.contains("Umidade") && line.contains("Temperatura")) {
                     try {
-                        int humIdx = line.indexOf("Umidade:") + 8;
-                        int pctIdx = line.indexOf("%", humIdx);
-                        int tempIdx = line.indexOf("Temperatura:") + 12;
-                        int cIdx = line.indexOf("*C", tempIdx);
-                        if (cIdx == -1) cIdx = line.indexOf("°C", tempIdx);
-                        if (cIdx == -1) cIdx = line.indexOf("C", tempIdx);
+                        String clean = line.replace("\t", " ");
+                        int uIdx = clean.indexOf("Umidade:") + 8;
+                        int pctIdx = clean.indexOf("%", uIdx);
+                        int tIdx = clean.indexOf("Temperatura:") + 12;
+                        
+                        String strU = clean.substring(uIdx, pctIdx).trim();
+                        String strT = clean.substring(tIdx).replace("*C", "").replace("°C", "").replace("C", "").trim();
 
-                        float parsedHum = Float.parseFloat(line.substring(humIdx, pctIdx).trim());
-                        float parsedTemp = Float.parseFloat(line.substring(tempIdx, cIdx).trim());
+                        float parsedHum = Float.parseFloat(strU);
+                        float parsedTemp = Float.parseFloat(strT);
                         notifyData(parsedTemp, parsedHum);
                         return;
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        Log.e(TAG, "Erro parse formato 2B", e);
                     }
                 }
 
-                // Formato 3: CSV simples (ex: 29.4,60.2)
-                if (line.contains(",")) {
-                    String[] parts = line.split(",");
-                    if (parts.length >= 2) {
-                        float temp = Float.parseFloat(parts[0].trim());
-                        float hum = Float.parseFloat(parts[1].trim());
-                        notifyData(temp, hum);
+                // Formato 3: Qualquer string contendo números separados por vírgula ou espaço
+                if (line.matches(".*\\d+\\.\\d+.*")) {
+                    // Regex genérico para capturar qualquer número decimal na linha
+                    java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+(\\.\\d+)?)").matcher(line);
+                    List<Float> numbers = new ArrayList<>();
+                    while (matcher.find()) {
+                        numbers.add(Float.parseFloat(matcher.group(1)));
+                    }
+                    if (numbers.size() >= 2) {
+                        // Se o primeiro for umidade e segundo temp (ex: Umidade: 60, Temp: 25.3)
+                        if (line.toLowerCase().indexOf("umid") < line.toLowerCase().indexOf("temp")) {
+                            notifyData(numbers.get(1), numbers.get(0));
+                        } else {
+                            notifyData(numbers.get(0), numbers.get(1));
+                        }
+                        return;
+                    } else if (numbers.size() == 1) {
+                        notifyData(numbers.get(0), 50.0f);
+                        return;
                     }
                 }
             } catch (Exception e) {
-                Log.w(TAG, "Linha recebida com formato não reconhecido: " + line);
+                Log.w(TAG, "Linha recebida com formato não reconhecido: " + line, e);
             }
         }
 
@@ -326,6 +355,17 @@ public class BluetoothService {
             try {
                 if (socket != null) socket.close();
             } catch (IOException ignored) {
+            }
+        }
+
+        public void write(String message) {
+            try {
+                if (outputStream != null) {
+                    outputStream.write(message.getBytes());
+                    outputStream.flush();
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Erro ao enviar dados via Bluetooth", e);
             }
         }
     }

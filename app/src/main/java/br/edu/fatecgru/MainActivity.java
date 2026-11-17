@@ -34,7 +34,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 import java.util.Set;
 
 import br.edu.fatecgru.bluetooth.BluetoothConnectionListener;
@@ -56,6 +55,7 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
     private TextView tvCurrentTemp;
     private TextView tvCurrentHum;
     private TextView tvLastUpdate;
+    private MaterialButton btnRefreshReading;
 
     private TextView tvMinTemp;
     private TextView tvAvgTemp;
@@ -65,7 +65,6 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
     private ThermalGraphView thermalGraphView;
     private TextView tvThresholdDisplay;
     private Slider sliderThreshold;
-    private MaterialButton btnSimulateReading;
     private MaterialButton btnClearHistory;
 
     private ReadingRepository repository;
@@ -76,7 +75,6 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
     private String selectedLocation = "Área Asfaltada / Estacionamento";
 
     private float criticalThreshold = 32.0f;
-    private final Random random = new Random();
 
     // Launcher para solicitação de múltiplas permissões
     private final ActivityResultLauncher<String[]> permissionLauncher =
@@ -127,6 +125,7 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
         tvCurrentTemp = findViewById(R.id.tvCurrentTemp);
         tvCurrentHum = findViewById(R.id.tvCurrentHum);
         tvLastUpdate = findViewById(R.id.tvLastUpdate);
+        btnRefreshReading = findViewById(R.id.btnRefreshReading);
 
         tvMinTemp = findViewById(R.id.tvMinTemp);
         tvAvgTemp = findViewById(R.id.tvAvgTemp);
@@ -136,24 +135,7 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
         thermalGraphView = findViewById(R.id.thermalGraphView);
         tvThresholdDisplay = findViewById(R.id.tvThresholdDisplay);
         sliderThreshold = findViewById(R.id.sliderThreshold);
-        btnSimulateReading = findViewById(R.id.btnSimulateReading);
         btnClearHistory = findViewById(R.id.btnClearHistory);
-
-        // Trava inicial: botão de simulação desabilitado (cinza) até que haja conexão Bluetooth ativa
-        updateSimulationButtonState(false);
-    }
-
-    private void updateSimulationButtonState(boolean isConnected) {
-        if (btnSimulateReading != null) {
-            btnSimulateReading.setEnabled(isConnected);
-            if (isConnected) {
-                btnSimulateReading.setText(R.string.btn_simulate);
-                btnSimulateReading.setAlpha(1.0f);
-            } else {
-                btnSimulateReading.setText("Simular Leitura (Requer Conexão)");
-                btnSimulateReading.setAlpha(0.5f);
-            }
-        }
     }
 
     private void initServices() {
@@ -199,12 +181,20 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
 
         btnAddLocation.setOnClickListener(v -> showAddLocationDialog());
 
+        btnRefreshReading.setOnClickListener(v -> {
+            if (bluetoothService != null && bluetoothService.isConnected()) {
+                // Envia comando imediato 'R' para o Arduino disparar uma leitura
+                bluetoothService.sendData("R\n");
+                Toast.makeText(this, "Solicitando leitura imediata ao sensor...", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Conecte o Bluetooth para ler o sensor.", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         sliderThreshold.addOnChangeListener((slider, value, fromUser) -> {
             criticalThreshold = value;
             tvThresholdDisplay.setText(String.format(Locale.getDefault(), "%.1f °C", criticalThreshold));
         });
-
-        btnSimulateReading.setOnClickListener(v -> simulateClimateReading());
 
         btnClearHistory.setOnClickListener(v -> showClearHistoryDialog());
     }
@@ -327,24 +317,6 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
                 .show();
     }
 
-    private void simulateClimateReading() {
-        // Gera valores coerentes com microclimas urbanos:
-        // Asfalto tende a esquentar mais (30°C - 38°C), área arborizada mais amena (23°C - 28°C)
-        float baseTemp;
-        if (selectedLocation.contains("Asfaltada") || selectedLocation.contains("Estacionamento")) {
-            baseTemp = 31.0f + (random.nextFloat() * 6.5f); // 31.0°C a 37.5°C (picos de ilha de calor!)
-        } else if (selectedLocation.contains("Arborizada") || selectedLocation.contains("Bosque")) {
-            baseTemp = 23.5f + (random.nextFloat() * 4.0f); // 23.5°C a 27.5°C (ilha de frescor)
-        } else {
-            baseTemp = 26.0f + (random.nextFloat() * 7.0f); // 26.0°C a 33.0°C
-        }
-
-        float hum = 45.0f + (random.nextFloat() * 35.0f); // 45% a 80%
-        onDataReceived(Math.round(baseTemp * 10f) / 10f, Math.round(hum * 10f) / 10f);
-
-        Toast.makeText(this, "Leitura simulada gerada!", Toast.LENGTH_SHORT).show();
-    }
-
     private void loadHistoryAndStats() {
         String filter = selectedLocation.equalsIgnoreCase("Todos os Pontos") ? null : selectedLocation;
 
@@ -410,7 +382,6 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
             tvConnectionStatus.setText(String.format(getString(R.string.status_connected), deviceName));
             btnConnectBt.setText(getString(R.string.btn_disconnect_bt));
             btnConnectBt.setEnabled(true);
-            updateSimulationButtonState(true);
             Toast.makeText(this, "Conectado ao Arduino (" + deviceName + ")", Toast.LENGTH_SHORT).show();
         });
     }
@@ -452,7 +423,6 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
             tvConnectionStatus.setText(getString(R.string.status_disconnected));
             btnConnectBt.setText(getString(R.string.btn_connect_bt));
             btnConnectBt.setEnabled(true);
-            updateSimulationButtonState(false);
         });
     }
 

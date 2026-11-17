@@ -44,6 +44,7 @@ SoftwareSerial bluetooth(BT_RX, BT_TX);
 
 // Variáveis para guardar umidade e temperatura
 float u, t;
+unsigned long ultimaLeitura = 0;
 
 // Sensor DHT11 conectado no pino digital 10
 DHT DHT_sens(10, DHT11);
@@ -67,34 +68,45 @@ void setup() {
 
 void loop() {
 
-  // ===== ETAPA 1: LER O SENSOR =====
-  u = DHT_sens.readHumidity();    // Mede a umidade
-  t = DHT_sens.readTemperature(); // Mede a temperatura
+  // Se o aplicativo Android pedir leitura imediata pelo botão "Ler Sensor" (envia 'R')
+  if (bluetooth.available()) {
+    char c = bluetooth.read();
+    if (c == 'R' || c == 'r') {
+      fazerLeituraSensor();
+      ultimaLeitura = millis(); // reinicia o contador para não ler duas vezes seguidas
+    }
+  }
 
-  // ===== ETAPA 2: VERIFICAR SE A LEITURA DEU CERTO =====
+  // Envio contínuo e automático a cada 2 segundos
+  unsigned long tempoAtual = millis();
+  if (tempoAtual - ultimaLeitura >= 2000) {
+    ultimaLeitura = tempoAtual;
+    fazerLeituraSensor();
+  }
+}
+
+// Função dedicada para ler o sensor real e transmitir
+void fazerLeituraSensor() {
+  u = DHT_sens.readHumidity();    // Mede a umidade real
+  t = DHT_sens.readTemperature(); // Mede a temperatura real
+
   if (isnan(u) || isnan(t)) {
     Serial.println("Erro ao ler o DHT11!");
-    delay(2000);
     return;
   }
 
-  // ===== ETAPA 3: MOSTRAR O RESULTADO NO COMPUTADOR (MONITOR SERIAL) =====
+  // Mostra no Monitor Serial do computador
   Serial.print("Umidade: ");
   Serial.print(u, 0);
   Serial.print(" %\t");
-
   Serial.print("Temperatura: ");
   Serial.print(t, 1);
   Serial.println(" *C");
 
-  // ===== ETAPA 4: ENVIAR PARA O APLICATIVO ANDROID VIA BLUETOOTH =====
-  // Envia em formato padronizado que o app Android interpreta imediatamente:
+  // Envia via Bluetooth para o aplicativo Android
   bluetooth.print("{\"temp\":");
   bluetooth.print(t, 1);
   bluetooth.print(",\"hum\":");
   bluetooth.print(u, 1);
   bluetooth.println("}");
-
-  // Espera 2 segundos antes da próxima medição
-  delay(2000);
 }

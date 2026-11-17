@@ -11,8 +11,8 @@
     <string name="critical_limit">Limite Crítico de Calor</string>
     <string name="btn_connect_bt">Conectar Bluetooth (HC-05)</string>
     <string name="btn_disconnect_bt">Desconectar</string>
-    <string name="btn_simulate">Simular Leitura (+Demo)</string>
-    <string name="btn_clear">Limpar Histórico</string>
+    <string name="btn_refresh_sensor">🔄 Ler Sensor</string>
+    <string name="btn_clear">Limpar Histórico de Leituras</string>
     <string name="location_label">Ponto / Microclima:</string>
     <string name="status_disconnected">Status: Desconectado</string>
     <string name="status_connected">Status: Conectado a %s</string>
