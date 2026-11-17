@@ -1,3 +1,20 @@
 <resources>
-    <string name="app_name">MedidorDeTemperatura</string>
+    <string name="app_name">Monitor de Microclimas Urbanos</string>
+    <string name="title_ilhas_de_calor">Ilhas de Calor Urbanas</string>
+    <string name="current_reading">Leitura em Tempo Real</string>
+    <string name="temperature">Temperatura</string>
+    <string name="humidity">Umidade</string>
+    <string name="stats_title">Evolução &amp; Indicadores Térmicos</string>
+    <string name="min_temp">Mínima</string>
+    <string name="avg_temp">Média</string>
+    <string name="max_temp">Pico (Máx)</string>
+    <string name="critical_limit">Limite Crítico de Calor</string>
+    <string name="btn_connect_bt">Conectar Bluetooth (HC-05)</string>
+    <string name="btn_disconnect_bt">Desconectar</string>
+    <string name="btn_simulate">Simular Leitura (+Demo)</string>
+    <string name="btn_clear">Limpar Histórico</string>
+    <string name="location_label">Ponto / Microclima:</string>
+    <string name="status_disconnected">Status: Desconectado</string>
+    <string name="status_connected">Status: Conectado a %s</string>
+    <string name="status_connecting">Status: Conectando&#8230;</string>
 </resources>
