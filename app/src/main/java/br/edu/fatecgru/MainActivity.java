@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
@@ -28,6 +29,9 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.slider.Slider;
+
+import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -65,7 +69,11 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
     private ThermalGraphView thermalGraphView;
     private TextView tvThresholdDisplay;
     private Slider sliderThreshold;
+    private MaterialButton btnRemoveLocation;
     private MaterialButton btnClearHistory;
+
+    private static final String PREFS_NAME = "microclima_prefs";
+    private static final String PREF_LOCATIONS = "saved_locations";
 
     private ReadingRepository repository;
     private BluetoothService bluetoothService;
@@ -135,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
         thermalGraphView = findViewById(R.id.thermalGraphView);
         tvThresholdDisplay = findViewById(R.id.tvThresholdDisplay);
         sliderThreshold = findViewById(R.id.sliderThreshold);
+        btnRemoveLocation = findViewById(R.id.btnRemoveLocation);
         btnClearHistory = findViewById(R.id.btnClearHistory);
     }
 
@@ -145,17 +154,15 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
     }
 
     private void setupLocationSpinner() {
-        locationList.clear();
-        locationList.add("Área Asfaltada / Estacionamento");
-        locationList.add("Área Arborizada / Bosque");
-        locationList.add("Pátio Escolar / Praça");
-        locationList.add("Ambiente Interno / Sala");
-        locationList.add("Ponto Genérico");
-        locationList.add("Todos os Pontos");
+        loadLocationsFromPrefs();
 
         locationAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, locationList);
         locationAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spLocation.setAdapter(locationAdapter);
+
+        if (!locationList.isEmpty()) {
+            selectedLocation = locationList.get(0);
+        }
 
         spLocation.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -168,6 +175,44 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
             public void onNothingSelected(AdapterView<?> parent) {
             }
         });
+    }
+
+    private void loadLocationsFromPrefs() {
+        locationList.clear();
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String json = prefs.getString(PREF_LOCATIONS, null);
+
+        if (json != null) {
+            try {
+                JSONArray arr = new JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    locationList.add(arr.getString(i));
+                }
+            } catch (JSONException ignored) {
+            }
+        }
+
+        // Se estiver vazio, popula com os padrões iniciais
+        if (locationList.isEmpty()) {
+            locationList.add("Área Asfaltada / Estacionamento");
+            locationList.add("Área Arborizada / Bosque");
+            locationList.add("Pátio Escolar / Praça");
+            locationList.add("Ambiente Interno / Sala");
+            locationList.add("Ponto Genérico");
+            locationList.add("Todos os Pontos");
+            saveLocationsToPrefs();
+        }
+    }
+
+    private void saveLocationsToPrefs() {
+        JSONArray arr = new JSONArray();
+        for (String loc : locationList) {
+            arr.put(loc);
+        }
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putString(PREF_LOCATIONS, arr.toString())
+                .apply();
     }
 
     private void setupListeners() {
@@ -195,6 +240,8 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
             criticalThreshold = value;
             tvThresholdDisplay.setText(String.format(Locale.getDefault(), "%.1f °C", criticalThreshold));
         });
+
+        btnRemoveLocation.setOnClickListener(v -> showRemoveLocationDialog());
 
         btnClearHistory.setOnClickListener(v -> showClearHistoryDialog());
     }
@@ -291,6 +338,7 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
                             // Insere antes de "Todos os Pontos"
                             int insertIdx = Math.max(0, locationList.size() - 1);
                             locationList.add(insertIdx, newLoc);
+                            saveLocationsToPrefs();
                             locationAdapter.notifyDataSetChanged();
                             spLocation.setSelection(insertIdx);
                         } else {
@@ -302,14 +350,149 @@ public class MainActivity extends AppCompatActivity implements BluetoothConnecti
                 .show();
     }
 
-    private void showClearHistoryDialog() {
+    private void showRemoveLocationDialog() {
+        List<String> removableLocations = new ArrayList<>();
+        for (String loc : locationList) {
+            if (!loc.equalsIgnoreCase("Todos os Pontos")) {
+                removableLocations.add(loc);
+            }
+        }
+
+        if (removableLocations.isEmpty()) {
+            Toast.makeText(this, "Não há pontos cadastrados para remover.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        int defaultIndex = removableLocations.indexOf(selectedLocation);
+        if (defaultIndex == -1) {
+            defaultIndex = 0;
+        }
+
+        final int[] selectedIndexHolder = new int[]{defaultIndex};
+        String[] items = removableLocations.toArray(new String[0]);
+
         new AlertDialog.Builder(this)
-                .setTitle("Limpar Histórico")
-                .setMessage("Deseja apagar as leituras do ponto selecionado ('" + selectedLocation + "')?")
+                .setTitle("Remover Ponto / Microclima")
+                .setSingleChoiceItems(items, defaultIndex, (dialog, which) -> selectedIndexHolder[0] = which)
+                .setPositiveButton("Remover", (dialog, which) -> {
+                    int chosen = selectedIndexHolder[0];
+                    if (chosen >= 0 && chosen < removableLocations.size()) {
+                        String locToRemove = removableLocations.get(chosen);
+                        confirmAndRemoveLocation(locToRemove);
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void confirmAndRemoveLocation(String locToRemove) {
+        new AlertDialog.Builder(this)
+                .setTitle("Confirmar Exclusão")
+                .setMessage("Deseja realmente remover o ponto '" + locToRemove + "' e apagar todo o seu histórico de leituras do banco de dados?")
+                .setPositiveButton("Sim, Excluir", (dialog, which) -> {
+                    repository.clearHistory(locToRemove, deleted -> {
+                        locationList.remove(locToRemove);
+
+                        boolean hasSpecific = false;
+                        for (String l : locationList) {
+                            if (!l.equalsIgnoreCase("Todos os Pontos")) {
+                                hasSpecific = true;
+                                break;
+                            }
+                        }
+                        if (!hasSpecific) {
+                            locationList.add(0, "Ponto Genérico");
+                        }
+
+                        saveLocationsToPrefs();
+                        locationAdapter.notifyDataSetChanged();
+                        spLocation.setSelection(0);
+                        selectedLocation = locationList.get(0);
+                        loadHistoryAndStats();
+
+                        Toast.makeText(this, "Ponto '" + locToRemove + "' removido com sucesso (" + deleted + " leituras apagadas).", Toast.LENGTH_SHORT).show();
+                    });
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void showClearHistoryDialog() {
+        List<String> points = new ArrayList<>();
+        for (String loc : locationList) {
+            if (!loc.equalsIgnoreCase("Todos os Pontos")) {
+                points.add(loc);
+            }
+        }
+
+        if (points.isEmpty()) {
+            Toast.makeText(this, "Não há pontos cadastrados.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] items = points.toArray(new String[0]);
+        boolean[] checkedItems = new boolean[items.length];
+
+        // Se o usuário estiver visualizando um ponto específico, já deixa marcado como conveniência
+        // Se estiver em "Todos os Pontos", deixa todos marcados por padrão
+        boolean isAllSelected = selectedLocation.equalsIgnoreCase("Todos os Pontos");
+        for (int i = 0; i < items.length; i++) {
+            if (isAllSelected || items[i].equals(selectedLocation)) {
+                checkedItems[i] = true;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Selecione os Pontos para Limpar")
+                .setMultiChoiceItems(items, checkedItems, (dialog, which, isChecked) -> checkedItems[which] = isChecked)
+                .setPositiveButton("Limpar Selecionados", (dialog, which) -> {
+                    List<String> toClear = new ArrayList<>();
+                    for (int i = 0; i < checkedItems.length; i++) {
+                        if (checkedItems[i]) {
+                            toClear.add(items[i]);
+                        }
+                    }
+
+                    if (toClear.isEmpty()) {
+                        Toast.makeText(this, "Nenhum ponto foi selecionado.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    confirmAndClearHistory(toClear);
+                })
+                .setNeutralButton("Limpar Tudo (Todos)", (dialog, which) -> confirmAndClearAllHistory())
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void confirmAndClearHistory(List<String> locationsToClear) {
+        String msg;
+        if (locationsToClear.size() == 1) {
+            msg = "Deseja realmente apagar o histórico do ponto '" + locationsToClear.get(0) + "'?";
+        } else {
+            msg = "Deseja realmente apagar o histórico dos " + locationsToClear.size() + " pontos selecionados?";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Confirmar Limpeza")
+                .setMessage(msg)
                 .setPositiveButton("Sim, Limpar", (dialog, which) -> {
-                    String target = selectedLocation.equalsIgnoreCase("Todos os Pontos") ? null : selectedLocation;
-                    repository.clearHistory(target, deleted -> {
+                    repository.clearHistory(locationsToClear, deleted -> {
                         Toast.makeText(this, "Histórico limpo (" + deleted + " registros removidos).", Toast.LENGTH_SHORT).show();
+                        loadHistoryAndStats();
+                    });
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void confirmAndClearAllHistory() {
+        new AlertDialog.Builder(this)
+                .setTitle("Limpar Todo o Histórico")
+                .setMessage("Deseja realmente apagar o histórico de TODOS os pontos do banco de dados?")
+                .setPositiveButton("Sim, Limpar Tudo", (dialog, which) -> {
+                    repository.clearHistory((String) null, deleted -> {
+                        Toast.makeText(this, "Todo o histórico foi apagado (" + deleted + " registros removidos).", Toast.LENGTH_SHORT).show();
                         loadHistoryAndStats();
                     });
                 })

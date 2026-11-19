@@ -197,7 +197,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * Limpa o histórico de medições.
+     * Limpa o histórico de medições para um local (ou todos se null/Todos).
      */
     public int clearHistory(String location) {
         SQLiteDatabase db = this.getWritableDatabase();
@@ -206,5 +206,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } else {
             return db.delete(TABLE_READINGS, null, null);
         }
+    }
+
+    /**
+     * Limpa o histórico de medições para múltiplos locais selecionados.
+     */
+    public int clearHistory(List<String> locations) {
+        if (locations == null || locations.isEmpty()) {
+            return 0;
+        }
+        SQLiteDatabase db = this.getWritableDatabase();
+        StringBuilder where = new StringBuilder(COLUMN_LOCATION + " IN (");
+        String[] args = new String[locations.size()];
+        for (int i = 0; i < locations.size(); i++) {
+            where.append("?");
+            if (i < locations.size() - 1) {
+                where.append(",");
+            }
+            args[i] = locations.get(i);
+        }
+        where.append(")");
+        return db.delete(TABLE_READINGS, where.toString(), args);
     }
 }

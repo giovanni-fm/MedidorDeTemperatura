@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Monitor de Microclimas Urbanos</string>
+    <string name="app_name">iTempe</string>
     <string name="title_ilhas_de_calor">Ilhas de Calor Urbanas</string>
     <string name="current_reading">Leitura em Tempo Real</string>
     <string name="temperature">Temperatura</string>
@@ -12,6 +12,7 @@
     <string name="btn_connect_bt">Conectar Bluetooth (HC-05)</string>
     <string name="btn_disconnect_bt">Desconectar</string>
     <string name="btn_refresh_sensor">🔄 Ler Sensor</string>
+    <string name="btn_remove_location">Remover Ponto / Microclima</string>
     <string name="btn_clear">Limpar Histórico de Leituras</string>
     <string name="location_label">Ponto / Microclima:</string>
     <string name="status_disconnected">Status: Desconectado</string>

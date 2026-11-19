@@ -75,4 +75,13 @@ public class ReadingRepository {
             }
         });
     }
+
+    public void clearHistory(List<String> locations, Callback<Integer> callback) {
+        executor.execute(() -> {
+            int deleted = dbHelper.clearHistory(locations);
+            if (callback != null) {
+                mainHandler.post(() -> callback.onResult(deleted));
+            }
+        });
+    }
 }
